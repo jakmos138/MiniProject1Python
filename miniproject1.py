@@ -1,37 +1,58 @@
-import warnings
-import ebooklib
-from ebooklib import epub
-from bs4 import BeautifulSoup
+import requests
+from PIL import Image
+from io import BytesIO
 
-warnings.filterwarnings("ignore", message="In the future version we will turn default option ignore_ncx to True.")
-warnings.filterwarnings("ignore", message="This search incorrectly ignores the root element, and will be fixed in a future version.")
+def download_image(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Check if the request was successful
+        return Image.open(BytesIO(response.content))
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading the image: {e}")
+        return None
+    except IOError as e:
+        print(f"Error opening the image: {e}")
+        return None
 
+url1 = "https://cdn.thecollector.com/wp-content/uploads/2023/04/hp-lovecraft-cthulhu-mythos.jpg?width=1400&quality=55"
+img1 = download_image(url1)
+if img1 is None:
+    raise SystemExit("Failed to download Picture #1")
 
-def read_epub_file(file_path):
-    book = epub.read_epub(file_path)
-    return book
+original_width, original_height = img1.size
+new_width, new_height = 1000, 700
 
+left = (original_width - new_width) / 2
+top = (original_height - new_height) / 2
+right = (original_width + new_width) / 2
+bottom = (original_height + new_height) / 2
 
-def display_book_structure(book):
-    # Print Metadata
-    print("\nTitle:")
-    for metadata in book.get_metadata('DC', 'title'):
-        print(f'{metadata[0]}')
+crop_box = (left, top, right, bottom)
+img1_cropped = img1.crop(crop_box)
 
-    print("\nAuthors:")
-    for metadata in book.get_metadata('DC', 'creator'):
-        print(f'{metadata[0]}')
+resize_dimensions = (1000, 700)
+img1_resized = img1_cropped.resize(resize_dimensions)
 
+url2 = "https://cdn-icons-png.flaticon.com/128/1136/1136964.png"
+img2 = download_image(url2)
+if img2 is None:
+    raise SystemExit("Failed to download Picture #1")
 
-def main():
-    file_path = 'book.epub'  # Path to your ePub file
-    
-    # Read the ePub file
-    book = read_epub_file(file_path)
-    
-    # Display the structure of the book
-    display_book_structure(book)
+# Rotate the image by a chosen angle
+angle = 45  # Example value
+img2_rotated = img2.rotate(angle, expand=True)
 
+offset_x = 350  # Example offset value
+offset_y = 150  # Example offset value
+position = ((img1_cropped.width - img2_rotated.width) // 2 + offset_x, 
+            (img1_cropped.height - img2_rotated.height) // 2 + offset_y)
 
-if __name__ == '__main__':
-    main()
+# Create a new image to avoid modifying the original
+final_image = img1_cropped.copy()
+final_image.paste(img2_rotated, position, img2_rotated)
+
+# Save the final image
+final_image.save("final_image.png")
+
+# Optionally, display the final image
+final_image.show()
