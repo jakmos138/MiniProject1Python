@@ -7,10 +7,8 @@ from PIL import Image
 from io import BytesIO
 import matplotlib.pyplot as plt
 from docx import Document
-from docx.shared import Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from docx.shared import Cm
+from collections import Counter
 
 
 warnings.filterwarnings("ignore", message="In the future version we will turn default option ignore_ncx to True.")
@@ -59,7 +57,7 @@ def decode_paragraphs(text):
     clean_paragraphs = [re.sub(r'<[^>]*>', '', paragraph).strip()
                         for paragraph in paragraphs
                         if paragraph.strip()]
-    return clean_paragraphs
+    return clean_paragraphs[1:]
 
 
 def evaluate_paragraph_lengths(paragraphs):
@@ -67,10 +65,24 @@ def evaluate_paragraph_lengths(paragraphs):
     return paragraph_lengths
 
 
+def plot_paragraph_lengths(paragraph_lengths):
+    counter = Counter(paragraph_lengths)
+    lengths = list(counter.keys())
+    frequencies = list(counter.values())
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(lengths, frequencies, width=1.0, edgecolor='black')
+    plt.xlabel('Number of Words in Paragraph')
+    plt.ylabel('Number of Paragraphs')
+    plt.title('Distribution of Paragraph Lengths in First Chapter')
+    plt.savefig('paragraph_lengths_distribution.png')
+    plt.close()
+
+
 def download_image(url):
     try:
         response = requests.get(url)
-        response.raise_for_status()
+        response.raise_for_status()  # Check if the request was successful
         return Image.open(BytesIO(response.content))
     except requests.exceptions.RequestException as e:
         print(f"Error downloading the image: {e}")
@@ -101,71 +113,43 @@ def combine_images(img_url, img_path):
 
     img2 = Image.open(img_path)
 
-    angle = 45
+    # Rotate the image by a chosen angle
+    angle = 45  # Example value
     img2_rotated = img2.rotate(angle, expand=True)
 
-    offset_x = 150
-    offset_y = 150
+    offset_x = 150  # Example offset value
+    offset_y = 150  # Example offset value
     position = ((img1_cropped.width - img2_rotated.width) // 2 + offset_x,
                 (img1_cropped.height - img2_rotated.height) // 2 + offset_y)
 
+    # Create a new image to avoid modifying the original
     final_image = img1_resized.copy()
     final_image.paste(img2_rotated, position, img2_rotated)
 
+    # Save the final image
     final_image.save("final_image.png")
 
     return final_image
 
 
-def plot_paragraph_lengths(paragraph_lengths, output_path):
-    plt.figure(figsize=(10, 6))
-    plt.hist(paragraph_lengths, bins=range(1, max(paragraph_lengths) + 2), edgecolor='black')
-    plt.title('Distribution of Paragraph Lengths')
-    plt.xlabel('Number of Words')
-    plt.ylabel('Number of Paragraphs')
-    plt.grid(True)
-    plt.savefig(output_path)
-    plt.close()
-
-
-def create_word_document(title, authors, report_author, img1_path, paragraph_lengths, num_paragraphs, num_words, min_words, max_words, avg_words, output_path):
-    document = Document()
-
+def create_document(title, img_path, authors, report_author, plot_path, description):
+    doc = Document()
+    
     # Title page
-    document.add_heading('Title Page', level=1)
-
-    document.add_heading('Title of the Book', level=2)
-    document.add_paragraph(title, style='IntenseQuote')
-
-    document.add_heading('Author(s) of the Book', level=2)
-    for author in authors:
-        document.add_paragraph(author, style='IntenseQuote')
-
-    document.add_heading('Author of the Report', level=2)
-    document.add_paragraph(report_author, style='IntenseQuote')
-
-    document.add_heading('Picture #1', level=2)
-    document.add_picture(img1_path, width=Inches(6))
-
-    document.add_page_break()
-
+    doc.add_heading(title, level=1)
+    doc.add_picture(img_path, width=Cm(12))
+    doc.add_paragraph(f"Author: {', '.join(authors)}")
+    doc.add_paragraph(f"Report Author: {report_author}")
+    
+    doc.add_page_break()
+    
     # Info page
-    document.add_heading('Info Page', level=1)
-
-    plot_path = "paragraph_lengths_distribution.png"
-    plot_paragraph_lengths(paragraph_lengths, plot_path)
-    document.add_picture(plot_path, width=Inches(6))
-    document.add_paragraph('Figure 1: Distribution of Paragraph Lengths', style='Caption')
-
-    document.add_heading('Description of the Plot', level=2)
-    document.add_paragraph(
-        f'The plot above shows the distribution of paragraph lengths in the first chapter of the book. '
-        f'There are {num_paragraphs} paragraphs, with a total of {num_words} words. '
-        f'The shortest paragraph contains {min_words} words, and the longest paragraph contains {max_words} words. '
-        f'The average paragraph length is {avg_words:.2f} words.'
-    )
-
-    document.save(output_path)
+    doc.add_heading('Paragraph Lengths Distribution', level=1)
+    doc.add_picture(plot_path, width=Cm(12))
+    
+    doc.add_paragraph(description)
+    
+    doc.save('report.docx')
 
 
 def main():
@@ -174,32 +158,34 @@ def main():
     end_pattern = '<hr class="chap"/>'
     img_url = "https://cdn.thecollector.com/wp-content/uploads/2023/04/hp-lovecraft-cthulhu-mythos.jpg"
     img_path = "img2.png"
-    report_author = "Jakub Moszyński"
-    output_doc_path = "report.docx"
-
+    project_author = "Jakub Moszyński"
+    # Read the ePub file
     book = read_epub_file(file_path)
 
+    # Display the structure of the book
     title, authors = get_book_info(book)
 
     first_chapter_text = get_first_chapter(book, start_pattern, end_pattern)
 
     first_chapter_paragraphs = decode_paragraphs(first_chapter_text)
 
+    # Evaluate paragraph lengths
     paragraph_lengths = evaluate_paragraph_lengths(first_chapter_paragraphs)
 
-    num_paragraphs = len(first_chapter_paragraphs)
-    num_words = sum(paragraph_lengths)
-    min_words = min(paragraph_lengths) if paragraph_lengths else 0
-    max_words = max(paragraph_lengths) if paragraph_lengths else 0
-    avg_words = num_words / num_paragraphs if num_paragraphs > 0 else 0
+    # Create plot
+    plot_paragraph_lengths(paragraph_lengths)
 
     final_image = combine_images(img_url, img_path)
 
-    create_word_document(title, authors, report_author, "final_image.png", paragraph_lengths, num_paragraphs, num_words, min_words, max_words, avg_words, output_doc_path)
+    description = (
+        f"The first chapter contains {len(first_chapter_paragraphs)} paragraphs.\n"
+        f"The total number of words in the first chapter is {sum(paragraph_lengths)}.\n"
+        f"The minimal number of words in a paragraph is {min(paragraph_lengths)}.\n"
+        f"The maximal number of words in a paragraph is {max(paragraph_lengths)}.\n"
+        f"The average number of words per paragraph is {sum(paragraph_lengths)/len(paragraph_lengths):.2f}."
+    )
 
-    print(title)
-    print(authors)
-    print(paragraph_lengths)
+    create_document(title, "final_image.png", authors, project_author, "paragraph_lengths_distribution.png", description)
 
 
 if __name__ == '__main__':
